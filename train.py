@@ -239,7 +239,7 @@ def main():
         if os.path.exists(best_model_path ):
             model_name = args.model_file_name
             saved_model = wandb.Artifact(model_name, type="model")
-            saved_model.add_file(save_path, name=model_name)
+            saved_model.add_file(best_model_path, name=model_name)
             print("Saving data to WandB...")
             run.log_artifact(saved_model)
     run.finish()
