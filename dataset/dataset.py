@@ -30,9 +30,9 @@ class SegmentationDataset(Dataset):
     def load_transformers(self):
         image_to_numpy = lambda image: self.labels_map[np.array(image, dtype=np.uint8)]
         self.lbl_transformer = T.Compose([
-            T.Resize((self.image_size)),
+            T.Resize(self.image_size),
             T.Lambda(image_to_numpy),
-            torch.from_numpy
+            T.Lambda(torch.from_numpy)
         ])
         self.img_transformer = T.Compose([
             T.Resize(self.image_size),
