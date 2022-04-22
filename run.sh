@@ -5,7 +5,7 @@ python train.py  --num_epochs 50 \
         --cuda 0 \
 		--validation_step 10 \
 		--num_workers 8 \
-        --batch_size 32 \
+        --batch_size 16 \
         --saved_models_path ./checkpoints_101_sgd \
 		--model_file_name my_first_bisenet.torch \
         --context_path resnet18 \
