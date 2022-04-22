@@ -135,9 +135,9 @@ def train(args, model, optimizer, dataloader_train, dataloader_val):
             model_path = os.path.join(args.saved_models_path, args.model_file_name)
             torch.save(model.module.state_dict(), model_path) 
 
-        if is_right_iteration(epoch, args.validation_step) and args.model_file_name is not None:
+        if is_right_iteration(epoch, args.validation_step):
             precision, miou = val(args, model, dataloader_val, False)
-            if miou > max_miou:
+            if miou > max_miou and args.model_file_name is not None:
                 max_miou = miou
                 best_model_path = os.path.join(args.saved_models_path, 'best_'+args.model_file_name)
                 torch.save(model.module.state_dict(), best_model_path) 
