@@ -184,8 +184,15 @@ def main():
     # Create datasets instance
     dataset_path = os.path.join(args.data, args.dataset)
     new_size = (args.crop_height, args.crop_width)
-    dataset_train = dataset.SegmentationDataset(dataset_path, new_size, 'train', device)
-    dataset_val = dataset.SegmentationDataset(dataset_path, new_size, 'val', device)
+    if args.dataset == 'Cityscapes':
+        dataset_train = dataset.Cityscapes(dataset_path, new_size, 'train', device)
+        dataset_val = dataset.Cityscapes(dataset_path, new_size, 'val', device)
+    elif args.dataset == 'GTA5':
+        dataset_train = dataset.Gta5(dataset_path, new_size, 'train', device)
+        # Validation just for trainin pourposes
+        dataset_val = [dataset_train[0]]
+    else:
+        raise Exception('Please choose either Cityscapes or GTA5 as datasets')    
 
     # Define your dataloaders:
     dataloader_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, drop_last=True)

@@ -40,10 +40,7 @@ class SegmentationDataset(Dataset):
         ])
 
     def load_paths(self):
-        format_path = lambda path: path.split('/')[1][:-1]
-        with open(os.path.join(self.path, f'{self.task}.txt')) as f:
-            self.img_entry_names = [format_path(i) for i in f.readlines()]
-            self.lbl_entry_names = [i.replace('leftImg8bit', 'gtFine_labelIds') for i in self.img_entry_names]
+        raise NotImplementedError
     
     def __getitem__(self, index):
         img_file_name = self.img_entry_names[index]
@@ -56,3 +53,16 @@ class SegmentationDataset(Dataset):
 
     def __len__(self):
         return len(self.img_entry_names)
+
+class Cityscapes(SegmentationDataset):
+    def load_paths(self):
+        format_path = lambda path: path.split('/')[1][:-1]
+        with open(os.path.join(self.path, f'{self.task}.txt')) as f:
+            self.img_entry_names = [format_path(i) for i in f.readlines()]
+            self.lbl_entry_names = [i.replace('leftImg8bit', 'gtFine_labelIds') for i in self.img_entry_names]
+
+class Gta5 (SegmentationDataset):
+    def load_paths(self):
+        with open(os.path.join(self.path, f'{self.task}.txt')) as f:
+            self.img_entry_names = [n[:-1] for n in f.readlines()]
+            self.lbl_entry_names = self.img_entry_names 
