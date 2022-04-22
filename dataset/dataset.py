@@ -50,8 +50,8 @@ class SegmentationDataset(Dataset):
         lbl_file_name = self.lbl_entry_names[index]
         img_path = os.path.join(self.path, 'images', img_file_name)
         lbl_path = os.path.join(self.path, 'labels', lbl_file_name)
-        img = self.img_transformer(Image.open(img_path)).to(torch.float32).to(self.device)
-        lbl = self.lbl_transformer(Image.open(lbl_path)).to(torch.float32).long().to(self.device) 
+        img = self.img_transformer(Image.open(img_path)).float().to(self.device)
+        lbl = self.lbl_transformer(Image.open(lbl_path)).long().to(self.device) 
         return img, lbl
 
     def __len__(self):

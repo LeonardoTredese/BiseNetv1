@@ -46,13 +46,8 @@ def val(args, model, dataloader, final_test):
         precision_record = []
         hist = np.zeros((args.num_classes, args.num_classes))
         for i, (data, label) in enumerate(dataloader):
-            label = label.type(torch.LongTensor)
-            data = data
-            label = label.long()
-
             # get RGB predict image
             predict = model(data).squeeze()
-            predict = predict.squeeze()
             predict = reverse_one_hot(predict)
             predict = np.array(predict.cpu())
 
@@ -112,8 +107,6 @@ def train(args, model, optimizer, dataloader_train, dataloader_val):
         tq.set_description('epoch %d, lr %f' % (epoch, lr))
         loss_record = []
         for i, (data, label) in enumerate(dataloader_train):
-            data = data
-            label = label.long()
             optimizer.zero_grad()
             
             with amp.autocast():
