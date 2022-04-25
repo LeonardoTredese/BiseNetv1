@@ -71,10 +71,10 @@ class SegmentationDataset(Dataset):
 
         # image -> [C, H, W]
         img = Image.fromarray(img)
-        img = self.to_tensor(img).float().to(self.device) 
+        img = self.to_tensor(img).float().to(self.device)
 
         lbl_to_numpy = self.labels_map[np.array(lbl, dtype=np.uint8)]
-        lbl = torch.from_numpy(lbl_to_numpy).long().to(self.device) 
+        lbl = torch.from_numpy(lbl_to_numpy).long().to(self.device)
 
         return img, lbl
 
