@@ -195,8 +195,19 @@ def main():
         raise Exception('Please choose either Cityscapes or GTA5 as datasets')    
 
     # Define your dataloaders:
-    dataloader_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, drop_last=True)
-    dataloader_val = DataLoader(dataset_val, batch_size=1, shuffle=True)
+    dataloader_train = DataLoader(
+        dataset_train,
+        batch_size=args.batch_size,
+        shuffle=True,
+        drop_last=True,
+        num_workers=args.num_workers
+    )
+    dataloader_val = DataLoader(
+        dataset_val,
+        batch_size=1,
+        shuffle=True,
+        num_workers=args.num_workers
+    )
 
     # build optimizer
     if args.optimizer == 'rmsprop':
