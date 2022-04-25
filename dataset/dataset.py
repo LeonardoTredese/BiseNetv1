@@ -5,6 +5,9 @@ import numpy as np
 import torchvision.transforms as T
 import json
 import torch
+import random
+from imgaug import augmenters as iaa
+from utils import RandomCrop
 
 class SegmentationDataset(Dataset):
     def __init__(self, path, image_size, task, device):
@@ -19,36 +22,60 @@ class SegmentationDataset(Dataset):
         self.image_size = image_size
         self.task = task
         self.device = device
+        self.scale = [0.75, 1, 1.5, 1.75, 2] # scales from BiSeNet paper
+        self.fliplr = iaa.Fliplr(0.5)
+        self.to_tensor = T.Compose([
+            T.ToTensor(),
+            T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)), # mean and std from ImageNet
+            ])
         self.load_labels_map()
-        self.load_transformers()
         self.load_paths()
 
     def load_labels_map(self):
         with open(os.path.join(self.path, 'info.json'), 'r') as f:
             self.labels_map = np.array(json.load(f)['label2train'], dtype=np.uint8)[:, 1]
 
-    def load_transformers(self):
-        image_to_numpy = lambda image: self.labels_map[np.array(image, dtype=np.uint8)]
-        self.lbl_transformer = T.Compose([
-            T.Resize(self.image_size),
-            T.Lambda(image_to_numpy),
-            T.Lambda(torch.from_numpy)
-        ])
-        self.img_transformer = T.Compose([
-            T.Resize(self.image_size),
-            T.PILToTensor()
-        ])
-
     def load_paths(self):
         raise NotImplementedError
     
     def __getitem__(self, index):
+        seed = random.random()
         img_file_name = self.img_entry_names[index]
         lbl_file_name = self.lbl_entry_names[index]
         img_path = os.path.join(self.path, 'images', img_file_name)
         lbl_path = os.path.join(self.path, 'labels', lbl_file_name)
-        img = self.img_transformer(Image.open(img_path)).float().to(self.device)
-        lbl = self.lbl_transformer(Image.open(lbl_path)).long().to(self.device) 
+
+        img = Image.open(img_path)
+        # randomly scale image and random crop
+        scale = random.choice(self.scale)
+        scale = (int(self.image_size[0] * scale), int(self.image_size[1] * scale))
+        if self.task == 'train':
+            img = T.Resize(scale, Image.BILINEAR)(img)
+            img = RandomCrop(self.image_size, seed, pad_if_needed=True)(img)
+
+        img = np.array(img)
+
+        lbl = Image.open(lbl_path)
+        # randomly scale label and random crop
+        if self.task == 'train':
+            lbl = T.Resize(scale, Image.NEAREST)(lbl)
+            lbl = RandomCrop(self.image_size, seed, pad_if_needed=True)(lbl)
+
+        lbl = np.array(lbl)
+
+        # augment image and label
+        if self.task == 'train':
+            seq_det = self.fliplr.to_deterministic()
+            img = seq_det.augment_image(img)
+            lbl = seq_det.augment_image(lbl)
+
+        # image -> [C, H, W]
+        img = Image.fromarray(img)
+        img = self.to_tensor(img).float().to(self.device) 
+
+        lbl_to_numpy = self.labels_map[np.array(lbl, dtype=np.uint8)]
+        lbl = torch.from_numpy(lbl_to_numpy).long().to(self.device) 
+
         return img, lbl
 
     def __len__(self):
