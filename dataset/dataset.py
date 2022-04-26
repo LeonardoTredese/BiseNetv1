@@ -10,18 +10,16 @@ from imgaug import augmenters as iaa
 from utils import RandomCrop
 
 class SegmentationDataset(Dataset):
-    def __init__(self, path, image_size, task, device):
+    def __init__(self, path, image_size, task):
         """
         Inputs:
         - path: the base folder of the dataset
         - image_size: a tuple indicating the resizing for the image in the format (Height, Width)
         - task: a string in ['train', 'val']
-        - device: a string in ['cpu', 'cuda']
         """
         self.path = path
         self.image_size = image_size
         self.task = task
-        self.device = device
         self.scale = [0.75, 1, 1.5, 1.75, 2] # scales from BiSeNet paper
         self.fliplr = iaa.Fliplr(0.5)
         self.to_tensor = T.Compose([
@@ -71,10 +69,10 @@ class SegmentationDataset(Dataset):
 
         # image -> [C, H, W]
         img = Image.fromarray(img)
-        img = self.to_tensor(img).float().to(self.device)
+        img = self.to_tensor(img).float()
 
         lbl_to_numpy = self.labels_map[np.array(lbl, dtype=np.uint8)]
-        lbl = torch.from_numpy(lbl_to_numpy).long().to(self.device)
+        lbl = torch.from_numpy(lbl_to_numpy).long()
 
         return img, lbl
 
