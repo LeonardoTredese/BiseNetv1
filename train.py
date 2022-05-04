@@ -91,7 +91,7 @@ def val(args, model, dataloader, final_test):
         return precision, miou
 
 
-def train(args, model, optimizer, dataloader_train, dataloader_val):
+def train(args, model, optimizer, dataloader_train, dataloader_val, device):
     writer = SummaryWriter(comment=''.format(args.optimizer, args.context_path))
     scaler = amp.GradScaler()
     if args.loss == 'dice':
@@ -110,6 +110,7 @@ def train(args, model, optimizer, dataloader_train, dataloader_val):
             optimizer.zero_grad()
             
             with amp.autocast():
+                data, label = data.to(device), label.to(device)
                 output, output_sup1, output_sup2 = model(data)
                 loss1 = loss_func(output, label)
                 loss2 = loss_func(output_sup1, label)
@@ -185,18 +186,29 @@ def main():
     dataset_path = os.path.join(args.data, args.dataset)
     new_size = (args.crop_height, args.crop_width)
     if args.dataset == 'Cityscapes':
-        dataset_train = dataset.Cityscapes(dataset_path, new_size, 'train', device)
-        dataset_val = dataset.Cityscapes(dataset_path, new_size, 'val', device)
+        dataset_train = dataset.Cityscapes(dataset_path, new_size, 'train')
+        dataset_val = dataset.Cityscapes(dataset_path, new_size, 'val')
     elif args.dataset == 'GTA5':
-        dataset_train = dataset.Gta5(dataset_path, new_size, 'train', device)
+        dataset_train = dataset.Gta5(dataset_path, new_size, 'train', )
         # Validation just for trainin pourposes
         dataset_val = [dataset_train[0]]
     else:
         raise Exception('Please choose either Cityscapes or GTA5 as datasets')    
 
     # Define your dataloaders:
-    dataloader_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, drop_last=True)
-    dataloader_val = DataLoader(dataset_val, batch_size=1, shuffle=True)
+    dataloader_train = DataLoader(
+        dataset_train,
+        batch_size=args.batch_size,
+        shuffle=True,
+        drop_last=True,
+        num_workers=args.num_workers
+    )
+    dataloader_val = DataLoader(
+        dataset_val,
+        batch_size=1,
+        shuffle=True,
+        num_workers=args.num_workers
+    )
 
     # build optimizer
     if args.optimizer == 'rmsprop':
@@ -229,7 +241,7 @@ def main():
     wandb.watch(model, log_freq=args.batch_size)
     
     # train
-    train(args, model, optimizer, dataloader_train, dataloader_val)
+    train(args, model, optimizer, dataloader_train, dataloader_val, device)
     # final test
     val(args, model, dataloader_val, True)
     
