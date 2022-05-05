@@ -4,10 +4,11 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from model.build_BiSeNet import BiSeNet
+from model.discriminator import FCDiscriminator 
 from dataset import dataset
 import utils
 import wandb
-from train import segmentation_train
+from train import segmentation_train, adversarial_train
 from validate import val
 
 def main():
@@ -33,41 +34,45 @@ def main():
     parser.add_argument('--saved_models_path', type=str, default=None, help='path to save model')
     parser.add_argument('--optimizer', type=str, default='rmsprop', help='optimizer, support rmsprop, sgd, adam')
     parser.add_argument('--loss', type=str, default='crossentropy', help='loss function, dice or crossentropy')
+    parser.add_argument('--adversarial_lambda', type=float, default=0.01, help='Multiplication constant for adversarial loss')
 
     args = parser.parse_args()
 
     # build model
     os.environ['CUDA_VISIBLE_DEVICES'] = args.cuda
     model = BiSeNet(args.num_classes, args.context_path)
+    discriminator = FCDiscriminator(args.num_classes)
     if torch.cuda.is_available() and args.use_gpu:
         device = torch.device('cuda')
+        model = torch.nn.DataParallel(model, output_device = device)
+        discriminator = torch.nn.DataParallel(discriminator, output_device = device)
     else:
         device = torch.device('cpu')
-    model = torch.nn.DataParallel(model, output_device = device)
     
     # Create datasets instance
     dataset_path = os.path.join(args.data, args.dataset)
     new_size = (args.crop_height, args.crop_width)
-    if args.dataset == 'Cityscapes':
-        dataset_train = dataset.Cityscapes(dataset_path, new_size, 'train')
-        dataset_val = dataset.Cityscapes(dataset_path, new_size, 'val')
-    elif args.dataset == 'GTA5':
-        dataset_train = dataset.Gta5(dataset_path, new_size, 'train', )
-        # Validation just for trainin pourposes
-        dataset_val = [dataset_train[0]]
-    else:
-        raise Exception('Please choose either Cityscapes or GTA5 as datasets')    
+    source_train_dataset = dataset.Gta5(dataset_path, new_size, 'train')
+    target_train_dataset = dataset.Cityscapes(dataset_path, new_size, 'train')
+    target_valid_dataset = dataset.Cityscapes(dataset_path, new_size, 'val')
 
     # Define your dataloaders:
-    dataloader_train = DataLoader(
-        dataset_train,
+    source_train_loader = DataLoader(
+        source_train_dataset,
         batch_size=args.batch_size,
         shuffle=True,
         drop_last=True,
         num_workers=args.num_workers
     )
-    dataloader_val = DataLoader(
-        dataset_val,
+    target_train_loader = DataLoader(
+        target_train_dataset,
+        batch_size=args.batch_size,
+        shuffle=True,
+        drop_last=True,
+        num_workers=args.num_workers
+    )
+    target_valid_loader= DataLoader(
+        target_valid_dataset,
         batch_size=1,
         shuffle=True,
         num_workers=args.num_workers
@@ -75,11 +80,14 @@ def main():
 
     # build optimizer
     if args.optimizer == 'rmsprop':
-        optimizer = torch.optim.RMSprop(model.parameters(), args.learning_rate)
+        model_optimizer = torch.optim.RMSprop(model.parameters(), args.learning_rate)
+        discriminator_optimizer = torch.optim.RMSprop(discriminator.parameters(), args.learning_rate)
     elif args.optimizer == 'sgd':
-        optimizer = torch.optim.SGD(model.parameters(), args.learning_rate, momentum=0.9, weight_decay=1e-4)
+        model_optimizer = torch.optim.SGD(model.parameters(), args.learning_rate, momentum=0.9, weight_decay=1e-4)
+        discriminator_optimizer = torch.optim.SGD(discriminator.parameters(), args.learning_rate, momentum=0.9, weight_decay=1e-4)
     elif args.optimizer == 'adam':
-        optimizer = torch.optim.Adam(model.parameters(), args.learning_rate)
+        model_optimizer = torch.optim.Adam(model.parameters(), args.learning_rate)
+        discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), args.learning_rate)
     else:  # rmsprop
         print('not supported optimizer \n')
         return None
@@ -104,9 +112,12 @@ def main():
     wandb.watch(model, log_freq=args.batch_size)
     
     # train
-    segmentation_train(args, model, optimizer, dataloader_train, dataloader_val, device)
+    #segmentation_train(args, model, optimizer, dataloader_train, dataloader_val, device)
+    adversarial_train(args, model, discriminator, model_optimizer, discriminator_optimizer,
+                        source_train_loader, target_train_loader, target_valid_loader, device)
+    
     # final test
-    val(args, model, dataloader_val, True)
+    val(args, model, target_valid_loader, True)
     
     # save model in wandb and close connection
     if args.saved_models_path is not None and args.model_file_name is not None:
