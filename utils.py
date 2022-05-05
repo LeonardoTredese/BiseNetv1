@@ -7,6 +7,7 @@ import pandas as pd
 import random
 import numbers
 import torchvision
+import wandb
 
 CLASSES = [
   'road', 'sidewalk', 'building', 'wall', 'fence', 'pole', 'light', 'sign', 
@@ -16,6 +17,17 @@ CLASSES = [
 IDS = list(range(len(CLASSES) - 1))
 WANDB_PROJECT = "bisenet"
 WANDB_ENTITY = "spaghetti-code"
+
+# wrapper for logging masks to W&B
+def wb_mask(bg_img, pred_mask=[], true_mask=[]):
+  masks = {}
+  if len(pred_mask) > 0:
+    masks["prediction"] = {"mask_data" : pred_mask}
+  if len(true_mask) > 0:
+    masks["ground truth"] = {"mask_data" : true_mask}
+  return wandb.Image(bg_img, masks=masks, 
+    classes=wandb.Classes([{'name': name, 'id': id} 
+      for name, id in zip(utils.CLASSES, utils.IDS)]))
 
 def poly_lr_scheduler(optimizer, init_lr, iter, lr_decay_iter=1,
                       max_iter=300, power=0.9):
