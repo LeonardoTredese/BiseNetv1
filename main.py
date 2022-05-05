@@ -50,11 +50,12 @@ def main():
         device = torch.device('cpu')
     
     # Create datasets instance
-    dataset_path = os.path.join(args.data, args.dataset)
+    cityscapes_path = os.path.join(args.data, 'Cityscapes')
+    gta_path = os.path.join(args.data, 'GTA5')
     new_size = (args.crop_height, args.crop_width)
-    source_train_dataset = dataset.Gta5(dataset_path, new_size, 'train')
-    target_train_dataset = dataset.Cityscapes(dataset_path, new_size, 'train')
-    target_valid_dataset = dataset.Cityscapes(dataset_path, new_size, 'val')
+    source_train_dataset = dataset.Gta5(gta_path, new_size, 'train')
+    target_train_dataset = dataset.Cityscapes(cityscapes_path, new_size, 'train')
+    target_valid_dataset = dataset.Cityscapes(cityscapes_path, new_size, 'val')
 
     # Define your dataloaders:
     source_train_loader = DataLoader(

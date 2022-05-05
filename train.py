@@ -28,9 +28,12 @@ def adversarial_train(args, model, discriminator, model_optimizer, discriminator
                                         args.learning_rate, iter=epoch, max_iter=args.num_epochs)
         discriminator_lr = poly_lr_scheduler(discriminator_optimizer, \
                                         args.learning_rate, iter=epoch, max_iter=args.num_epochs)
+        
         tq = tqdm(total=len(target_loader_train) * args.batch_size)
         tq.set_description('adv, epoch %d, lr %f' % (epoch, model_lr))
+        
         seg_loss_record, adv_loss_record, disc_loss_record = [], [], []
+        
         model.train()
         for (s_image, s_label), (t_image, t_label) in zip(source_loader_train, target_loader_train):
             model_optimizer.zero_grad()
@@ -42,9 +45,9 @@ def adversarial_train(args, model, discriminator, model_optimizer, discriminator
             # train on source domain
             with amp.autocast():
                 seg_source, output_sup1, output_sup2 = model(t_image)
-                loss1 = loss_func(seg_source, s_label)
-                loss2 = loss_func(output_sup1, s_label)
-                loss3 = loss_func(output_sup2, s_label)
+                loss1 = model_loss(seg_source, s_label)
+                loss2 = model_loss(output_sup1, s_label)
+                loss3 = model_loss(output_sup2, s_label)
                 seg_loss = loss1 + loss2 + loss3
             seg_loss_record.append(seg_loss.item())
             scaler.scale(seg_loss).backward()
@@ -54,10 +57,11 @@ def adversarial_train(args, model, discriminator, model_optimizer, discriminator
             # confuse discriminator
             with amp.autocast():
                 seg_target, _, _ = model(t_image)
-                with torch.no_grad():
-                    d_out = discriminator(seg_target)
-                confused_label = is_source * tensor.ones(d_out.data.size(), device=device)
-                adv_loss = args.adversaria_lambda * discriminator_loss(d_out, confused_label)
+                discriminator.eval()
+                d_out = discriminator(seg_target)
+                confused_label = is_source * torch.ones(d_out.data.size(), device=device)
+                print(args.adversarial_lambda)
+                adv_loss = args.adversarial_lambda * discriminator_loss(d_out, confused_label)
             adv_loss_record.append(adv_loss.item())
             scaler.scale(adv_loss).backward()
             scaler.step(model_optimizer)
@@ -66,8 +70,8 @@ def adversarial_train(args, model, discriminator, model_optimizer, discriminator
             # train discriminator
             with amp.autocast():
                 s_out, t_out  = discriminator(seg_source.detach()), discriminator(seg_target.detach())
-                s_disc_label = is_source * tensor.ones(s_out.data.size(), device=device)
-                t_disc_label = is_target * tensor.ones(t_out.data.sise(), device=device)
+                s_disc_label = is_source * torch.ones(s_out.data.size(), device=device)
+                t_disc_label = is_target * torch.ones(t_out.data.size(), device=device)
                 s_disc_loss = discriminator_loss(s_out, s_disc_label)
                 t_disc_loss = discriminator_loss(t_out, t_disc_label)
                 disc_loss = (s_disc_loss + t_disc_loss) / 2
@@ -77,10 +81,9 @@ def adversarial_train(args, model, discriminator, model_optimizer, discriminator
             scaler.update()
                 
             tq.update(args.batch_size)
-            tq.set_postfix(loss='%.6f' % loss)
+            tq.set_postfix(seg_loss='%.6f' % seg_loss)
             step += 1
-            writer.add_scalar('loss_step', loss, step)
-            loss_record.append(loss.item())
+            writer.add_scalar('seg_loss_step', seg_loss, step)
         tq.close()
         seg_loss_train_mean = np.mean(seg_loss_record)
         adv_loss_train_mean = np.mean(adv_loss_record)
