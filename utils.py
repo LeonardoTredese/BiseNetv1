@@ -27,7 +27,7 @@ def wb_mask(bg_img, pred_mask=[], true_mask=[]):
     masks["ground truth"] = {"mask_data" : true_mask}
   return wandb.Image(bg_img, masks=masks, 
     classes=wandb.Classes([{'name': name, 'id': id} 
-      for name, id in zip(utils.CLASSES, utils.IDS)]))
+      for name, id in zip(CLASSES, IDS)]))
 
 def poly_lr_scheduler(optimizer, init_lr, iter, lr_decay_iter=1,
                       max_iter=300, power=0.9):

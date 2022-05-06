@@ -4,13 +4,14 @@ import torch
 import torch.cuda.amp as amp
 from tensorboardX import SummaryWriter
 from utils import poly_lr_scheduler
+from validate import val
 from loss import DiceLoss
 from tqdm import tqdm
 import wandb
 
 
 def adversarial_train(args, model, discriminator, model_optimizer, discriminator_optimizer,\
-                        source_loader_train, target_loader_train,target_loader_val, device):
+                        source_loader_train, target_loader_train, target_loader_val, device):
     writer = SummaryWriter(comment=f'adversarial, {args.optimizer}, {args.context_path}')
     scaler = amp.GradScaler()
     max_miou, step = 0, 0
@@ -38,11 +39,13 @@ def adversarial_train(args, model, discriminator, model_optimizer, discriminator
         for (s_image, s_label), (t_image, t_label) in zip(source_loader_train, target_loader_train):
             model_optimizer.zero_grad()
             discriminator_optimizer.zero_grad()
+            
             with amp.autocast():
                 s_image, s_label = s_image.to(device), s_label.to(device) 
                 t_image, t_label = t_image.to(device), t_label.to(device)
                  
             # train on source domain
+            discriminator.module.requires_grad(False)
             with amp.autocast():
                 seg_source, output_sup1, output_sup2 = model(t_image)
                 loss1 = model_loss(seg_source, s_label)
@@ -57,10 +60,8 @@ def adversarial_train(args, model, discriminator, model_optimizer, discriminator
             # confuse discriminator
             with amp.autocast():
                 seg_target, _, _ = model(t_image)
-                discriminator.eval()
                 d_out = discriminator(seg_target)
                 confused_label = is_source * torch.ones(d_out.data.size(), device=device)
-                print(args.adversarial_lambda)
                 adv_loss = args.adversarial_lambda * discriminator_loss(d_out, confused_label)
             adv_loss_record.append(adv_loss.item())
             scaler.scale(adv_loss).backward()
@@ -68,6 +69,7 @@ def adversarial_train(args, model, discriminator, model_optimizer, discriminator
             scaler.update()
 
             # train discriminator
+            discriminator.module.requires_grad(True)
             with amp.autocast():
                 s_out, t_out  = discriminator(seg_source.detach()), discriminator(seg_target.detach())
                 s_disc_label = is_source * torch.ones(s_out.data.size(), device=device)
@@ -103,7 +105,7 @@ def adversarial_train(args, model, discriminator, model_optimizer, discriminator
             torch.save(model.module.state_dict(), model_path) 
 
         if is_right_iteration(epoch, args.validation_step):
-            precision, miou = val(args, model, dataloader_val, False)
+            precision, miou = val(args, model, target_loader_val, False)
             if miou > max_miou and args.model_file_name is not None:
                 max_miou = miou
                 best_model_path = os.path.join(args.saved_models_path, 'best_'+args.model_file_name)

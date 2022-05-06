@@ -4,10 +4,10 @@ python main.py  --num_epochs 50 \
         --num_classes 19 \
         --cuda 0 \
 	--validation_step 10 \
-	--num_workers 4 \
-        --batch_size 4 \
-        --saved_models_path ./checkpoints_101_sgd \
-	--model_file_name my_first_bisenet.torch \
+	--num_workers 8 \
+        --batch_size 8 \
+        --saved_models_path ./checkpoints_adv_18_sgd \
+	--model_file_name adversarial_trained_bisenet.torch \
         --context_path resnet18 \
         --optimizer sgd
 

@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from utils import reverse_one_hot, compute_global_accuracy, fast_hist, per_class_iu, wb_mask
+from utils import reverse_one_hot, compute_global_accuracy, fast_hist, per_class_iu, wb_mask, CLASSES
 import wandb
 
 def val(args, model, dataloader, final_test):
@@ -12,7 +12,7 @@ def val(args, model, dataloader, final_test):
     final_model_res_at = wandb.Artifact("bisenet_pred", "model_preds")
     main_columns = ["prediction", "ground_truth"]
     # we'll track the IOU for each class
-    main_columns.extend(["iou_" + s for s in utils.CLASSES])
+    main_columns.extend(["iou_" + s for s in CLASSES])
     # create tables
     val_table = wandb.Table(columns=main_columns)
     model_res_table = wandb.Table(columns=main_columns)
