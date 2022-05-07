@@ -30,7 +30,7 @@ def val(args, model, dataloader, final_test):
 
             # get RGB label image
             label = label.squeeze()
-            if args.loss == 'dice':
+            if args.segmentation_loss == 'dice':
                 label = reverse_one_hot(label)
             label = np.array(label.cpu())
 

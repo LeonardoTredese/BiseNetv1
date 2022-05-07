@@ -11,87 +11,104 @@ import wandb
 from train import segmentation_train, adversarial_train
 from validate import val
 
+def get_dataset(dataset_name, crop_size, task, base_path):
+    path = os.path.join(base_path, dataset_name)
+    if dataset_name == 'GTA5':
+        return dataset.Gta5(path, crop_size, task)
+    elif dataset_name == 'Cityscapes':
+        return dataset.Cityscapes(path, crop_size, task)
+
+def get_optimizer(optimizer, model, learning_rate):
+    params = model.parameters()
+    if optimizer == 'rmsprop':
+        return torch.optim.RMSprop(params, learning_rate)
+    elif optimizer == 'sgd':
+        return torch.optim.SGD(params, learning_rate, momentum=.9, weight_decay=1e-4)
+    elif optimizer == 'adam':
+        return torch.optim.Adam(params, learning_rate, betas=(.9, .99))
+
 def main():
     # basic parameters
     parser = argparse.ArgumentParser()
+    parser.add_argument('--adapt_domain', action=argparse.BooleanOptionalAction, help='Source to target adaptation, disable with --no-adapt_domain')
     parser.add_argument('--num_epochs', type=int, default=300, help='Number of epochs to train for')
     parser.add_argument('--init_epoch', type=int, default=0, help='Start counting epochs from this number')
     parser.add_argument('--checkpoint_step', type=int, default=1, help='How often to save checkpoints (epochs)')
     parser.add_argument('--validation_step', type=int, default=10, help='How often to perform validation (epochs)')
-    parser.add_argument('--dataset', type=str, default="Cityscapes", help='Dataset you are using.')
+    parser.add_argument('--source_dataset', type=str, default="GTA5", help='Source domain dataset')
+    parser.add_argument('--target_dataset', type=str, default="Cityscapes", help='Target domain dataset')
+    parser.add_argument('--validation_dataset', type=str, default="Cityscapes", help='Dataset to perform validation on')
     parser.add_argument('--crop_height', type=int, default=512, help='Height of cropped/resized input image to network')
     parser.add_argument('--crop_width', type=int, default=1024, help='Width of cropped/resized input image to network')
     parser.add_argument('--batch_size', type=int, default=2, help='Number of images in each batch')
-    parser.add_argument('--context_path', type=str, default="resnet101",
-                        help='The context path model you are using, resnet18, resnet101.')
-    parser.add_argument('--learning_rate', type=float, default=0.01, help='learning rate used for train')
-    parser.add_argument('--data', type=str, default='', help='path of training data')
+    parser.add_argument('--context_path', type=str, default="resnet101",help='The context path model you are using: either resnet18, resnet101.')
+    parser.add_argument('--segmentation_lr', type=float, default=2.5e-4, help='learning rate used to train the segmentation network')
+    parser.add_argument('--discriminator_lr', type=float, default=1e-4, help='learning rate used to train the adversarial network')
+    parser.add_argument('--data', type=str, default='', help='base path of training data')
     parser.add_argument('--num_workers', type=int, default=1, help='num of workers')
     parser.add_argument('--num_classes', type=int, default=32, help='num of object classes (with void)')
     parser.add_argument('--cuda', type=str, default='0', help='GPU ids used for training')
     parser.add_argument('--use_gpu', type=bool, default=True, help='whether to user gpu for training')
     parser.add_argument('--model_file_name', type=str, default=None, help='path to pretrained model')
     parser.add_argument('--saved_models_path', type=str, default=None, help='path to save model')
-    parser.add_argument('--optimizer', type=str, default='rmsprop', help='optimizer, support rmsprop, sgd, adam')
-    parser.add_argument('--loss', type=str, default='crossentropy', help='loss function, dice or crossentropy')
-    parser.add_argument('--adversarial_lambda', type=float, default=0.01, help='Multiplication constant for adversarial loss')
+    parser.add_argument('--segmentation_optimizer', type=str, default='rmsprop', help='optimizer for segmentation network, support rmsprop, sgd, adam')
+    parser.add_argument('--discriminator_optimizer', type=str, default='rmsprop', help='optimizer for adversarial network, support rmsprop, sgd, adam')
+    parser.add_argument('--segmentation_loss', type=str, default='crossentropy', help='loss function for segmentation, dice or crossentropy')
+    parser.add_argument('--adversarial_loss', type=str, default='crossentropy', help='loss function for segmentation, dice or crossentropy')
+    parser.add_argument('--adversarial_lambda', type=float, default=.001, help='Multiplication constant for adversarial loss')
 
     args = parser.parse_args()
 
     # build model
     os.environ['CUDA_VISIBLE_DEVICES'] = args.cuda
     model = BiSeNet(args.num_classes, args.context_path)
-    discriminator = FCDiscriminator(args.num_classes)
+    if args.adapt_domain:
+        discriminator = FCDiscriminator(args.num_classes)
+
     if torch.cuda.is_available() and args.use_gpu:
         device = torch.device('cuda')
         model = torch.nn.DataParallel(model, output_device = device)
-        discriminator = torch.nn.DataParallel(discriminator, output_device = device)
+        if args.adapt_domain:
+            discriminator = torch.nn.DataParallel(discriminator, output_device = device)
     else:
         device = torch.device('cpu')
     
     # Create datasets instance
-    cityscapes_path = os.path.join(args.data, 'Cityscapes')
-    gta_path = os.path.join(args.data, 'GTA5')
-    new_size = (args.crop_height, args.crop_width)
-    source_train_dataset = dataset.Gta5(gta_path, new_size, 'train')
-    target_train_dataset = dataset.Cityscapes(cityscapes_path, new_size, 'train')
-    target_valid_dataset = dataset.Cityscapes(cityscapes_path, new_size, 'val')
+    crop_size = (args.crop_height, args.crop_width)
+    source_dataset = get_dataset(args.source_dataset, crop_size, 'train',args.data)
+    validation_dataset = get_dataset(args.validation_dataset, crop_size, 'val', args.data)
+    if args.adapt_domain:
+        target_dataset = get_dataset(args.target_dataset, crop_size, 'train', args.data)
 
     # Define your dataloaders:
-    source_train_loader = DataLoader(
-        source_train_dataset,
+    source_loader = DataLoader(
+        source_dataset,
         batch_size=args.batch_size,
         shuffle=True,
-        drop_last=True,
+        pin_memory=True,
         num_workers=args.num_workers
     )
-    target_train_loader = DataLoader(
-        target_train_dataset,
-        batch_size=args.batch_size,
-        shuffle=True,
-        drop_last=True,
-        num_workers=args.num_workers
-    )
-    target_valid_loader= DataLoader(
-        target_valid_dataset,
+    validation_loader= DataLoader(
+        validation_dataset,
         batch_size=1,
         shuffle=True,
+        pin_memory=True,
         num_workers=args.num_workers
     )
+    if args.adapt_domain:
+        target_loader = DataLoader(
+            target_dataset,
+            batch_size=args.batch_size,
+            shuffle=True,
+            pin_memory=True,
+            num_workers=args.num_workers
+        )
 
     # build optimizer
-    if args.optimizer == 'rmsprop':
-        model_optimizer = torch.optim.RMSprop(model.parameters(), args.learning_rate)
-        discriminator_optimizer = torch.optim.RMSprop(discriminator.parameters(), args.learning_rate)
-    elif args.optimizer == 'sgd':
-        model_optimizer = torch.optim.SGD(model.parameters(), args.learning_rate, momentum=0.9, weight_decay=1e-4)
-        discriminator_optimizer = torch.optim.SGD(discriminator.parameters(), args.learning_rate, momentum=0.9, weight_decay=1e-4)
-    elif args.optimizer == 'adam':
-        model_optimizer = torch.optim.Adam(model.parameters(), args.learning_rate)
-        discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), args.learning_rate)
-    else:  # rmsprop
-        print('not supported optimizer \n')
-        return None
+     
+    model_optimizer = get_optimizer(args.segmentation_optimizer, model, args.segmentation_lr)
+    if args.adapt_domain:
+        discriminator_optimizer = get_optimizer(args.discriminator_optimizer, discriminator, args.segmentation_lr)
 
     # load pretrained model if exists
     if args.saved_models_path is not None:
@@ -113,12 +130,14 @@ def main():
     wandb.watch(model, log_freq=args.batch_size)
     
     # train
-    #segmentation_train(args, model, optimizer, dataloader_train, dataloader_val, device)
-    adversarial_train(args, model, discriminator, model_optimizer, discriminator_optimizer,
-                        source_train_loader, target_train_loader, target_valid_loader, device)
+    if args.adapt_domain:
+        adversarial_train(args, model, discriminator, model_optimizer, discriminator_optimizer, \
+                          source_loader, target_loader, validation_loader, device)
+    else:
+        segmentation_train(args, model, model_optimizer, source_loader, validation_loader, device)
     
     # final test
-    val(args, model, target_valid_loader, True)
+    val(args, model, validation_loader, True)
     
     # save model in wandb and close connection
     if args.saved_models_path is not None and args.model_file_name is not None:

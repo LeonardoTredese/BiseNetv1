@@ -9,33 +9,40 @@ from loss import DiceLoss
 from tqdm import tqdm
 import wandb
 
+def get_loss(loss_name):
+    if loss_name == 'dice':
+        return DiceLoss()
+    elif loss_name == 'crossentropy':
+        return torch.nn.CrossEntropyLoss(ignore_index=255)
+    elif loss_name == 'leastsquares':
+        return torch.nn.MSELoss()
+    elif loss_name == 'bce':
+        return torch.nn.BCEWithLogitsLoss() 
 
 def adversarial_train(args, model, discriminator, model_optimizer, discriminator_optimizer,\
                         source_loader_train, target_loader_train, target_loader_val, device):
-    writer = SummaryWriter(comment=f'adversarial, {args.optimizer}, {args.context_path}')
+    writer = SummaryWriter(comment=f'Segmentation, {args.segmentation_optimizer}, {args.context_path}, Discriminator {args.discriminator_optimizer}')
     scaler = amp.GradScaler()
     max_miou, step = 0, 0
-    is_source, is_target = 1.0, 0.0 
+    is_source, is_target = .0, 1.0 
       
-    if args.loss == 'dice':
-        model_loss = DiceLoss()
-    elif args.loss == 'crossentropy':
-        model_loss = torch.nn.CrossEntropyLoss(ignore_index=255)
-    discriminator_loss = torch.nn.BCEWithLogitsLoss()
+    model_loss = get_loss(args.segmentation_loss)
+    discriminator_loss = get_loss(args.adversarial_loss)
     
     for epoch in range(args.init_epoch, args.num_epochs):
         # Imposing same learning rate for discriminator and model 
         model_lr = poly_lr_scheduler(model_optimizer,\
-                                        args.learning_rate, iter=epoch, max_iter=args.num_epochs)
+                                        args.segmentation_lr, iter=epoch, max_iter=args.num_epochs)
         discriminator_lr = poly_lr_scheduler(discriminator_optimizer, \
-                                        args.learning_rate, iter=epoch, max_iter=args.num_epochs)
+                                        args.discriminator_lr, iter=epoch, max_iter=args.num_epochs)
         
-        tq = tqdm(total=len(target_loader_train) * args.batch_size)
-        tq.set_description('adv, epoch %d, lr %f' % (epoch, model_lr))
+        tq = tqdm(total=len(target_loader_train.dataset))
+        tq.set_description(f'adversarial, epoch {epoch}, seg_lr {model_lr:.4e}, discriminator_lr {discriminator_lr:.4e} ')
         
         seg_loss_record, adv_loss_record, disc_loss_record = [], [], []
         
         model.train()
+        discriminator.train()
         for (s_image, s_label), (t_image, t_label) in zip(source_loader_train, target_loader_train):
             model_optimizer.zero_grad()
             discriminator_optimizer.zero_grad()
@@ -45,19 +52,17 @@ def adversarial_train(args, model, discriminator, model_optimizer, discriminator
                 t_image, t_label = t_image.to(device), t_label.to(device)
                  
             # train on source domain
-            discriminator.module.requires_grad(False)
             with amp.autocast():
-                seg_source, output_sup1, output_sup2 = model(t_image)
+                seg_source, output_sup1, output_sup2 = model(s_image)
                 loss1 = model_loss(seg_source, s_label)
                 loss2 = model_loss(output_sup1, s_label)
                 loss3 = model_loss(output_sup2, s_label)
                 seg_loss = loss1 + loss2 + loss3
             seg_loss_record.append(seg_loss.item())
             scaler.scale(seg_loss).backward()
-            scaler.step(model_optimizer)
-            scaler.update()
            
             # confuse discriminator
+            discriminator.module.requires_grad(False)
             with amp.autocast():
                 seg_target, _, _ = model(t_image)
                 d_out = discriminator(seg_target)
@@ -66,39 +71,38 @@ def adversarial_train(args, model, discriminator, model_optimizer, discriminator
             adv_loss_record.append(adv_loss.item())
             scaler.scale(adv_loss).backward()
             scaler.step(model_optimizer)
-            scaler.update()
 
             # train discriminator
             discriminator.module.requires_grad(True)
             with amp.autocast():
-                s_out, t_out  = discriminator(seg_source.detach()), discriminator(seg_target.detach())
+                s_out = discriminator(seg_source.detach())
                 s_disc_label = is_source * torch.ones(s_out.data.size(), device=device)
+                s_disc_loss = discriminator_loss(s_out, s_disc_label) / 2
+                t_out = discriminator(seg_target.detach())
                 t_disc_label = is_target * torch.ones(t_out.data.size(), device=device)
-                s_disc_loss = discriminator_loss(s_out, s_disc_label)
-                t_disc_loss = discriminator_loss(t_out, t_disc_label)
-                disc_loss = (s_disc_loss + t_disc_loss) / 2
-            disc_loss_record.append(disc_loss.item()) 
-            scaler.scale(disc_loss).backward()
+                t_disc_loss = discriminator_loss(t_out, t_disc_label) / 2
+            disc_loss = s_disc_loss.item() + t_disc_loss.item()
+            disc_loss_record.append(disc_loss) 
+            
+            scaler.scale(s_disc_loss).backward()
+            scaler.scale(t_disc_loss).backward()
             scaler.step(discriminator_optimizer)
             scaler.update()
-                
-            tq.update(args.batch_size)
-            tq.set_postfix(seg_loss='%.6f' % seg_loss)
+            
             step += 1
             writer.add_scalar('seg_loss_step', seg_loss, step)
+            tq.update(s_image.shape[0])
+            tq.set_postfix(seg_loss=f'{seg_loss:.4e}', adv_loss=f'{adv_loss:.4e}', disc_loss=f'{disc_loss:.4e}')
         tq.close()
         seg_loss_train_mean = np.mean(seg_loss_record)
         adv_loss_train_mean = np.mean(adv_loss_record)
         disc_loss_train_mean = np.mean(disc_loss_record)
-        wandb.log({"segmentation loss": seg_loss_train_mean})
-        wandb.log({"adversarial loss": adv_loss_train_mean})
-        wandb.log({"discriminator loss": disc_loss_train_mean})
+        wandb.log({"segmentation loss":  seg_loss_train_mean, \
+                   "adversarial loss":   adv_loss_train_mean, \
+                   "discriminator loss": disc_loss_train_mean})
         writer.add_scalar('epoch/seg_loss_train_mean', float(seg_loss_train_mean), epoch)
         writer.add_scalar('epoch/adv_loss_train_mean', float(adv_loss_train_mean), epoch)
         writer.add_scalar('epoch/disc_loss_train_mean', float(disc_loss_train_mean), epoch)
-        print(f'segmentation loss: {seg_loss_train_mean}')
-        print(f'adversarial loss: {adv_loss_train_mean}' )
-        print(f'discriminator loss: {disc_loss_train_mean}') 
         is_right_iteration = lambda i, step: (i % step) == (step - 1)
         if is_right_iteration(epoch, args.checkpoint_step) and args.model_file_name is not None:
             model_path = os.path.join(args.saved_models_path, args.model_file_name)
@@ -117,19 +121,18 @@ def adversarial_train(args, model, discriminator, model_optimizer, discriminator
             
 
 def segmentation_train(args, model, optimizer, dataloader_train, dataloader_val, device):
-    writer = SummaryWriter(comment=''.format(args.optimizer, args.context_path))
+    writer = SummaryWriter(comment=f'Segmentation, {args.segmentation_optimizer}, {args.context_path}')
     scaler = amp.GradScaler()
-    if args.loss == 'dice':
-        loss_func = DiceLoss()
-    elif args.loss == 'crossentropy':
-        loss_func = torch.nn.CrossEntropyLoss(ignore_index=255)
+    
+    loss_func = get_loss(args.segmentation_loss)
+    
     max_miou = 0
     step = 0
     for epoch in range(args.init_epoch, args.num_epochs):
-        lr = poly_lr_scheduler(optimizer, args.learning_rate, iter=epoch, max_iter=args.num_epochs)
+        lr = poly_lr_scheduler(optimizer, args.segmentation_lr, iter=epoch, max_iter=args.num_epochs)
         model.train()
-        tq = tqdm(total=len(dataloader_train) * args.batch_size)
-        tq.set_description('epoch %d, lr %f' % (epoch, lr))
+        tq = tqdm(total=len(dataloader_train.dataset))
+        tq.set_description(f'segmentation, epoch {epoch}, seg_lr {lr:.4e}')
         loss_record = []
         for i, (data, label) in enumerate(dataloader_train):
             optimizer.zero_grad()
@@ -147,15 +150,14 @@ def segmentation_train(args, model, optimizer, dataloader_train, dataloader_val,
             scaler.update()
             
             tq.update(args.batch_size)
-            tq.set_postfix(loss='%.6f' % loss)
+            tq.set_postfix(seg_loss=f'{loss:.4e}')
             step += 1
             writer.add_scalar('loss_step', loss, step)
             loss_record.append(loss.item())
         tq.close()
         loss_train_mean = np.mean(loss_record)
-        wandb.log({"loss": loss_train_mean})
+        wandb.log({"segmentation loss": loss_train_mean})
         writer.add_scalar('epoch/loss_epoch_train', float(loss_train_mean), epoch)
-        print('loss for train : %f' % (loss_train_mean))
         is_right_iteration = lambda i, step: (i % step) == (step - 1)
         if is_right_iteration(epoch, args.checkpoint_step) and args.model_file_name is not None:
             model_path = os.path.join(args.saved_models_path, args.model_file_name)
