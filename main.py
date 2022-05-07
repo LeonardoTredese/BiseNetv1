@@ -108,7 +108,7 @@ def main():
      
     model_optimizer = get_optimizer(args.segmentation_optimizer, model, args.segmentation_lr)
     if args.adapt_domain:
-        discriminator_optimizer = get_optimizer(args.discriminator_optimizer, discriminator, args.segmentation_lr)
+        discriminator_optimizer = get_optimizer(args.discriminator_optimizer, discriminator, args.discriminator_lr)
 
     # load pretrained model if exists
     if args.saved_models_path is not None:
