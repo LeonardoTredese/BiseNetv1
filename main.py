@@ -30,7 +30,9 @@ def get_optimizer(optimizer, model, learning_rate):
 def main():
     # basic parameters
     parser = argparse.ArgumentParser()
-    parser.add_argument('--adapt_domain', action=argparse.BooleanOptionalAction, help='Source to target adaptation, disable with --no-adapt_domain')
+    parser.add_argument('--adapt_domain', action='store_true', help='Source to target adaptation, disable with --no-adapt_domain')
+    parser.add_argument('--no-adapt_domain', dest='adapt_domain', action='store_false')
+    parser.set_defaults(adapt_domain=False)
     parser.add_argument('--num_epochs', type=int, default=300, help='Number of epochs to train for')
     parser.add_argument('--init_epoch', type=int, default=0, help='Start counting epochs from this number')
     parser.add_argument('--checkpoint_step', type=int, default=1, help='How often to save checkpoints (epochs)')
