@@ -1,10 +1,11 @@
+from functools import partial
 import os
 import argparse
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from model.build_BiSeNet import BiSeNet
-from model.discriminator import FCDiscriminator 
+from model.discriminator import DepthwiseDiscriminator, FCDiscriminator 
 from dataset import dataset
 import utils
 import wandb
@@ -58,6 +59,9 @@ def main():
     parser.add_argument('--segmentation_loss', type=str, default='crossentropy', help='loss function for segmentation, dice or crossentropy')
     parser.add_argument('--adversarial_loss', type=str, default='crossentropy', help='loss function for segmentation, dice or crossentropy')
     parser.add_argument('--adversarial_lambda', type=float, default=.001, help='Multiplication constant for adversarial loss')
+    parser.add_argument('--depthwise_discriminator', action='store_true', help='Perform depthwise convolution in discriminator, disable with --no-depthwise_discriminator')
+    parser.add_argument('--no-depthwise_discriminator', dest='depthwise_discriminator', action='store_false')
+    parser.set_defaults(depthwise_discriminator=False)
 
     args = parser.parse_args()
 
@@ -65,7 +69,7 @@ def main():
     os.environ['CUDA_VISIBLE_DEVICES'] = args.cuda
     model = BiSeNet(args.num_classes, args.context_path)
     if args.adapt_domain:
-        discriminator = FCDiscriminator(args.num_classes)
+        discriminator = DepthwiseDiscriminator(args.num_classes) if args.depthwise_discriminator else FCDiscriminator(args.num_classes)
 
     if torch.cuda.is_available() and args.use_gpu:
         device = torch.device('cuda')
