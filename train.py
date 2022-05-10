@@ -62,7 +62,11 @@ def adversarial_train(args, model, discriminator, model_optimizer, discriminator
             scaler.scale(seg_loss).backward()
            
             # confuse discriminator
-            discriminator.module.requires_grad(False)
+            if device == torch.device('cpu'):
+                discriminator.requires_grad(False)
+            else:
+                discriminator.module.requires_grad(False)
+            
             with amp.autocast():
                 seg_target, _, _ = model(t_image)
                 d_out = discriminator(seg_target)
@@ -73,7 +77,10 @@ def adversarial_train(args, model, discriminator, model_optimizer, discriminator
             scaler.step(model_optimizer)
 
             # train discriminator
-            discriminator.module.requires_grad(True)
+            if device == torch.device('cpu'):
+                discriminator.requires_grad(True)
+            else:
+                discriminator.module.requires_grad(True)
             with amp.autocast():
                 s_out = discriminator(seg_source.detach())
                 s_disc_label = is_source * torch.ones(s_out.data.size(), device=device)

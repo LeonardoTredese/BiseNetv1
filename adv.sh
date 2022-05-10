@@ -18,4 +18,5 @@ python main.py  --num_epochs 50 \
 	--model_file_name bisenet.torch \
         --segmentation_optimizer sgd \
         --discriminator_optimizer adam \
-        --adversarial_lambda .001 
+        --adversarial_lambda .001 \
+        --depthwise_discriminator
