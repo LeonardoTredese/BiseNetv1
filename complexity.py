@@ -3,17 +3,19 @@ from torch import randn
 from thop import profile
 from thop import clever_format
 from model.build_BiSeNet import BiSeNet
-from model.discriminator import FCDiscriminator
+from model.discriminator import FCDiscriminator, DepthwiseDiscriminator
 
 def complexity(model, input):
     macs, params = profile(model, inputs=(input, ), verbose=False)
-    # FLOPs is nearly two times as MACs (multiply–accumulate operation = a + (b x c))
+    # MACs: multiply–accumulate operations, counts the number of a+(bxc) operations
+    # FLOPs: floating point operations, counts the number of add/sub/div/mul operations
+    # Since each MAC operation is composed by an add and a mult, FLOPs are nearly two times as MACs
     flops = 2*macs
     return macs, flops, params
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', type=str, default="discriminator", help='The model to which the complexity is calculated')
+    parser.add_argument('--model', type=str, default="discriminator", help='The model to which the complexity is calculated: either bisenet, discriminator, discriminator-depthwise')
     parser.add_argument('--input_height', type=int, default=512, help='Height of input to network')
     parser.add_argument('--input_width', type=int, default=1024, help='Width of input to network')
     parser.add_argument('--input_channels', type=int, default=19, help='Number of channels of input to network')
@@ -25,6 +27,9 @@ def main():
     if args.model == "bisenet":
         model_name = "BiSeNet"
         model = BiSeNet(args.num_classes, args.context_path)
+    elif args.model == "discriminator-depthwise":
+        model_name = "Discriminator with depthwise convolutions"
+        model = DepthwiseDiscriminator(args.num_classes)
     else:
         model_name = "Discriminator"
         model = FCDiscriminator(args.num_classes)
