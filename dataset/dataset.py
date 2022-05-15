@@ -24,7 +24,6 @@ class SegmentationDataset(Dataset):
         self.fliplr = iaa.Fliplr(0.5)
         self.to_tensor = T.Compose([
             T.ToTensor(),
-            T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)), # mean and std from ImageNet
             ])
         self.data_augmentation = augment_data
         print(self.data_augmentation)
