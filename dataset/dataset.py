@@ -10,7 +10,7 @@ from imgaug import augmenters as iaa
 from utils import RandomCrop
 
 class SegmentationDataset(Dataset):
-    def __init__(self, path, image_size, task):
+    def __init__(self, path, image_size, augment_data, task):
         """
         Inputs:
         - path: the base folder of the dataset
@@ -26,6 +26,8 @@ class SegmentationDataset(Dataset):
             T.ToTensor(),
             T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)), # mean and std from ImageNet
             ])
+        self.data_augmentation = augment_data
+        print(self.data_augmentation)
         self.load_labels_map()
         self.load_paths()
 
@@ -44,25 +46,22 @@ class SegmentationDataset(Dataset):
         lbl_path = os.path.join(self.path, 'labels', lbl_file_name)
 
         img = Image.open(img_path)
-        # randomly scale image and random crop
-        scale = random.choice(self.scale)
-        scale = (int(self.image_size[0] * scale), int(self.image_size[1] * scale))
-        if self.task == 'train':
-            img = T.Resize(scale, Image.BILINEAR)(img)
-            img = RandomCrop(self.image_size, seed, pad_if_needed=True)(img)
-
-        img = np.array(img)
-
         lbl = Image.open(lbl_path)
-        # randomly scale label and random crop
-        if self.task == 'train':
+        if self.task == 'train' and self.data_augmentation:
+            # randomly scale image, label and random crop
+            scale = random.choice(self.scale)
+            scale = (int(self.image_size[0] * scale), int(self.image_size[1] * scale))
+            img = T.Resize(scale, Image.BILINEAR)(img)
             lbl = T.Resize(scale, Image.NEAREST)(lbl)
-            lbl = RandomCrop(self.image_size, seed, pad_if_needed=True)(lbl)
-
+            img = RandomCrop(self.image_size, seed, pad_if_needed=True)(img)  
+            lbl = RandomCrop(self.image_size, seed, pad_if_needed=True)(lbl)  
+        else:
+            img = T.Resize(self.image_size)(img)
+            lbl = T.Resize(self.image_size)(lbl)
+        img = np.array(img)
         lbl = np.array(lbl)
-
         # augment image and label
-        if self.task == 'train':
+        if self.task == 'train':# and self.data_augmentation:
             seq_det = self.fliplr.to_deterministic()
             img = seq_det.augment_image(img)
             lbl = seq_det.augment_image(lbl)
