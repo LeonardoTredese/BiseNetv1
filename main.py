@@ -12,12 +12,12 @@ import wandb
 from train import segmentation_train, adversarial_train
 from validate import val
 
-def get_dataset(dataset_name, crop_size, task, base_path):
+def get_dataset(dataset_name, crop_size, augment_data , task, base_path):
     path = os.path.join(base_path, dataset_name)
     if dataset_name == 'GTA5':
-        return dataset.Gta5(path, crop_size, task)
+        return dataset.Gta5(path, crop_size, augment_data, task)
     elif dataset_name == 'Cityscapes':
-        return dataset.Cityscapes(path, crop_size, task)
+        return dataset.Cityscapes(path, crop_size, augment_data, task)
 
 def get_optimizer(optimizer, model, learning_rate):
     params = model.parameters()
@@ -62,6 +62,9 @@ def main():
     parser.add_argument('--depthwise_discriminator', action='store_true', help='Perform depthwise convolution in discriminator, disable with --no-depthwise_discriminator')
     parser.add_argument('--no-depthwise_discriminator', dest='depthwise_discriminator', action='store_false')
     parser.set_defaults(depthwise_discriminator=False)
+    parser.add_argument('--augment_data', action='store_true', help='Perform data augmentation, disable with --no-augment_data')
+    parser.add_argument('--no-augment_data', dest='augment_data', action='store_false')
+    parser.set_defaults(augment_data=False)
 
     args = parser.parse_args()
 
@@ -81,10 +84,10 @@ def main():
     
     # Create datasets instance
     crop_size = (args.crop_height, args.crop_width)
-    source_dataset = get_dataset(args.source_dataset, crop_size, 'train',args.data)
-    validation_dataset = get_dataset(args.validation_dataset, crop_size, 'val', args.data)
+    source_dataset = get_dataset(args.source_dataset, crop_size, args.augment_data, 'train',args.data)
+    validation_dataset = get_dataset(args.validation_dataset, crop_size, False, 'val', args.data)
     if args.adapt_domain:
-        target_dataset = get_dataset(args.target_dataset, crop_size, 'train', args.data)
+        target_dataset = get_dataset(args.target_dataset, crop_size, args.augment_data, 'train', args.data)
 
     # Define your dataloaders:
     source_loader = DataLoader(
