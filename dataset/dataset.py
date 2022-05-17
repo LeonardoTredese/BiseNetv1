@@ -22,12 +22,10 @@ class SegmentationDataset(Dataset):
         self.task = task
         self.scale = [0.75, 1, 1.5, 1.75, 2] # scales from BiSeNet paper
         self.fliplr = iaa.Fliplr(0.5)
-        self.to_tensor = T.Compose([
-            T.ToTensor(),
-            T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)), # mean and std from ImageNet
-            ])
+        # mean and std from ImageNet
+        img_net_normalization = T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
+        self.to_tensor = T.Compose([T.ToTensor(), img_net_normalization] if augment_data else [T.ToTensor()])
         self.data_augmentation = augment_data
-        print(self.data_augmentation)
         self.load_labels_map()
         self.load_paths()
 
