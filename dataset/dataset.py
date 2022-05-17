@@ -54,8 +54,8 @@ class SegmentationDataset(Dataset):
             img = RandomCrop(self.image_size, seed, pad_if_needed=True)(img)  
             lbl = RandomCrop(self.image_size, seed, pad_if_needed=True)(lbl)  
         else:
-            img = T.Resize(self.image_size)(img)
-            lbl = T.Resize(self.image_size)(lbl)
+            img = T.Resize(self.image_size, Image.BILINEAR)(img)
+            lbl = T.Resize(self.image_size, Image.NEAREST)(lbl)
         img = np.array(img)
         lbl = np.array(lbl)
         # augment image and label
