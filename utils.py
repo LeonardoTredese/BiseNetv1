@@ -314,3 +314,38 @@ def group_weight(weight_group, module, norm_layer, lr):
 	weight_group.append(dict(params=group_decay, lr=lr))
 	weight_group.append(dict(params=group_no_decay, weight_decay=.0, lr=lr))
 	return weight_group
+
+
+# FDA
+
+def low_freq_mutate( amp_src, amp_trg, L):
+    _, _, h, w = amp_src.size()
+    b = (  np.floor(np.amin((h,w))*L)  ).astype(int)     # get b
+    amp_src[:,:,0:b,0:b]     = amp_trg[:,:,0:b,0:b]      # top left
+    amp_src[:,:,0:b,w-b:w]   = amp_trg[:,:,0:b,w-b:w]    # top right
+    amp_src[:,:,h-b:h,0:b]   = amp_trg[:,:,h-b:h,0:b]    # bottom left
+    amp_src[:,:,h-b:h,w-b:w] = amp_trg[:,:,h-b:h,w-b:w]  # bottom right
+    return amp_src
+
+def FDA_source_to_target(src_img, trg_img, L):
+    # exchange magnitude
+    # input: src_img, trg_img
+
+    # get fft of both source and target
+    fft_src = torch.fft.rfft2(src_img.clone())
+    fft_trg = torch.fft.rfft2(trg_img.clone())
+
+    # extract amplitude and phase
+    amp_src, pha_src = fft_src.abs(), fft_src.angle()
+    amp_trg = fft_trg.abs()
+    
+    # replace the low frequency amplitude part of source with that from target
+    amp_src_ = low_freq_mutate( amp_src, amp_trg, L=L )
+
+    # recompose fft of source
+    fft_src_ = torch.complex(pha_src.cos() * amp_src_, pha_src.sin() * amp_src_)
+    # get the recomposed image: source content, target style
+    src_in_trg = torch.fft.irfft2(fft_src_)
+
+    return src_in_trg
+  

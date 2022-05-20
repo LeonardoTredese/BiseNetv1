@@ -9,7 +9,7 @@ from model.discriminator import DepthwiseDiscriminator, FCDiscriminator
 from dataset import dataset
 import utils
 import wandb
-from train import segmentation_train, adversarial_train
+from train import segmentation_train, adversarial_train, FDA_train
 from validate import val
 
 def get_dataset(dataset_name, crop_size, augment_data , task, base_path):
@@ -31,9 +31,11 @@ def get_optimizer(optimizer, model, learning_rate):
 def main():
     # basic parameters
     parser = argparse.ArgumentParser()
-    parser.add_argument('--adapt_domain', action='store_true', help='Source to target adaptation, disable with --no-adapt_domain')
-    parser.add_argument('--no-adapt_domain', dest='adapt_domain', action='store_false')
-    parser.set_defaults(adapt_domain=False)
+
+    parser.add_argument('--train_type', type=str, help='Available training types: "SEG" normal segmentation, "ADV_DA" adversarial domain adaptation, "FDA" fourier domain adaptation')
+    parser.add_argument('--fda_inverted', action='store_true', help='Perform target to source fourier doman adaptation')
+    parser.set_defaults(fda_inverted=False)
+    parser.add_argument('--fda_beta', type=float, default=3e-3, help='Beta parameter that regulates how many frequencies to swap between source and target')
     parser.add_argument('--num_epochs', type=int, default=300, help='Number of epochs to train for')
     parser.add_argument('--init_epoch', type=int, default=0, help='Start counting epochs from this number')
     parser.add_argument('--checkpoint_step', type=int, default=1, help='How often to save checkpoints (epochs)')
@@ -71,13 +73,13 @@ def main():
     # build model
     os.environ['CUDA_VISIBLE_DEVICES'] = args.cuda
     model = BiSeNet(args.num_classes, args.context_path)
-    if args.adapt_domain:
+    if args.train_type == 'ADV_DA':
         discriminator = DepthwiseDiscriminator(args.num_classes) if args.depthwise_discriminator else FCDiscriminator(args.num_classes)
 
     if torch.cuda.is_available() and args.use_gpu:
         device = torch.device('cuda')
         model = torch.nn.DataParallel(model, output_device = device)
-        if args.adapt_domain:
+        if args.train_type == 'ADV_DA':
             discriminator = torch.nn.DataParallel(discriminator, output_device = device)
     else:
         device = torch.device('cpu')
@@ -86,7 +88,7 @@ def main():
     crop_size = (args.crop_height, args.crop_width)
     source_dataset = get_dataset(args.source_dataset, crop_size, args.augment_data, 'train',args.data)
     validation_dataset = get_dataset(args.validation_dataset, crop_size, False, 'val', args.data)
-    if args.adapt_domain:
+    if args.train_type in ['ADV_DA', 'FDA']:
         target_dataset = get_dataset(args.target_dataset, crop_size, args.augment_data, 'train', args.data)
 
     # Define your dataloaders:
@@ -104,7 +106,7 @@ def main():
         pin_memory=True,
         num_workers=args.num_workers
     )
-    if args.adapt_domain:
+    if args.train_type in ['ADV_DA', 'FDA']:
         target_loader = DataLoader(
             target_dataset,
             batch_size=args.batch_size,
@@ -114,9 +116,8 @@ def main():
         )
 
     # build optimizer
-     
     model_optimizer = get_optimizer(args.segmentation_optimizer, model, args.segmentation_lr)
-    if args.adapt_domain:
+    if args.train_type == 'ADV_DA':
         discriminator_optimizer = get_optimizer(args.discriminator_optimizer, discriminator, args.segmentation_lr)
 
     # load pretrained model if exists
@@ -139,10 +140,12 @@ def main():
     wandb.watch(model, log_freq=args.batch_size)
     
     # train
-    if args.adapt_domain:
+    if args.train_type == 'ADV_DA':
         adversarial_train(args, model, discriminator, model_optimizer, discriminator_optimizer, \
                           source_loader, target_loader, validation_loader, device)
-    else:
+    elif args.train_type == 'FDA':
+        FDA_train(args, model, model_optimizer, source_loader, target_loader, validation_loader, args.fda_inverted, args.fda_beta, device)
+    elif args.train_type == 'SEG':
         segmentation_train(args, model, model_optimizer, source_loader, validation_loader, device)
     
     # final test
