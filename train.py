@@ -3,7 +3,7 @@ import numpy as np
 import torch
 import torch.cuda.amp as amp
 from tensorboardX import SummaryWriter
-from utils import poly_lr_scheduler, FDA_source_to_target
+from utils import poly_lr_scheduler, FDA_source_to_target, self_entropy
 from validate import val
 from loss import DiceLoss
 from tqdm import tqdm
@@ -163,17 +163,16 @@ def FDA_train(args, model, model_optimizer, source_loader_train, \
                 s_loss3 = model_loss(output_sup2, s_label)
                 src_loss = s_loss1 + s_loss2 + s_loss3
             src_loss_record.append(src_loss.item())
-            scaler.scale(src_loss).backward()
 
-#            # train on target domain
-#            with amp.autocast():
-#                seg_source, output_sup1, output_sup2 = model(t_image)
-#                t_loss1 = model_loss(seg_source, t_label)
-#                t_loss2 = model_loss(output_sup1, t_label)
-#                t_loss3 = model_loss(output_sup2, t_label)
-#                trg_loss = (t_loss1 + t_loss2 + t_loss3) /2
-#            trg_loss_record.append(trg_loss.item()*2)
-#            scaler.scale(trg_loss).backward()
+            # train on target domain
+            with amp.autocast():
+                seg_source, output_sup1, output_sup2 = model(t_image)
+                t_loss1 = self_entropy(seg_source)
+                t_loss2 = self_entropy(output_sup1)
+                t_loss3 = self_entropy(output_sup2)
+                trg_loss = (t_loss1 + t_loss2 + t_loss3) / 3
+            trg_loss_record.append(trg_loss.item())
+            scaler.scale(src_loss + 0.005 * trg_loss).backward()
             scaler.step(model_optimizer)
             scaler.update()
             

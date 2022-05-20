@@ -348,4 +348,14 @@ def FDA_source_to_target(src_img, trg_img, L):
     src_in_trg = torch.fft.irfft2(fft_src_)
 
     return src_in_trg
-  
+
+def self_entropy(x):
+    P = F.softmax(x, dim=1)        # [B, 19, H, W]
+    logP = F.log_softmax(x, dim=1) # [B, 19, H, W]
+    PlogP = P * logP               # [B, 19, H, W]
+    ent = -1.0 * PlogP.sum(dim=1)  # [B, 1, H, W]
+    ent = ent / 2.9444         # change when classes is not 19
+    # compute robust entropy
+    ent = ent ** 2.0 + 1e-8
+    ent = ent ** 2.0
+    return ent.mean()
