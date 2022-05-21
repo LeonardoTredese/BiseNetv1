@@ -22,7 +22,7 @@ def val(args, model, dataloader, final_test):
         model.eval()
         precision_record = []
         hist = np.zeros((args.num_classes, args.num_classes))
-        for i, (data, label) in enumerate(dataloader):
+        for i, (data, label, _) in enumerate(dataloader):
             # get RGB predict image
             predict = model(data).squeeze()
             predict = reverse_one_hot(predict)

@@ -1,5 +1,6 @@
 from torch.utils.data import Dataset
 from PIL import Image
+from skimage.segmentation import find_boundaries
 import os
 import numpy as np
 import torchvision.transforms as T
@@ -70,8 +71,9 @@ class SegmentationDataset(Dataset):
 
         lbl_to_numpy = self.labels_map[np.array(lbl, dtype=np.uint8)]
         lbl = torch.from_numpy(lbl_to_numpy).long()
+        bnd = torch.from_numpy(find_boundaries(lbl_to_numpy)).long()
 
-        return img, lbl
+        return img, lbl, bnd
 
     def __len__(self):
         return len(self.img_entry_names)

@@ -7,10 +7,10 @@ python main.py  --num_epochs 50 \
 	--num_workers 4 \
         --batch_size 8 \
         --no-adapt_domain \
-        --source_dataset GTA5 \
+        --source_dataset Cityscapes \
         --validation_dataset Cityscapes \
-        --context_path resnet18 \
+        --context_path resnet101 \
         --segmentation_loss crossentropy \
-        --saved_models_path ./checkpoints_18_sgd \
+        --saved_models_path ./checkpoints_101_sgd \
 	--model_file_name bisenet.torch \
         --segmentation_optimizer sgd \
