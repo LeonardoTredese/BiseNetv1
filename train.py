@@ -43,20 +43,21 @@ def adversarial_train(args, model, discriminator, model_optimizer, discriminator
         
         model.train()
         discriminator.train()
-        for (s_image, s_label), (t_image, t_label) in zip(source_loader_train, target_loader_train):
+        for (s_image, s_label, s_bound), (t_image, t_label, _) in zip(source_loader_train, target_loader_train):
             model_optimizer.zero_grad()
             discriminator_optimizer.zero_grad()
             
             with amp.autocast():
                 s_image, s_label = s_image.to(device), s_label.to(device) 
+                s_bound = s_bound.to(device)
                 t_image, t_label = t_image.to(device), t_label.to(device)
                 t_image = FDA_source_to_target(t_image, s_image, L = 0.003) 
             # train on source domain
             with amp.autocast():
                 seg_source, output_sup1, output_sup2 = model(s_image)
                 loss1 = model_loss(seg_source, s_label)
-                loss2 = model_loss(output_sup1, s_label)
-                loss3 = model_loss(output_sup2, s_label)
+                loss2 = model_loss(output_sup1, s_bound)
+                loss3 = model_loss(output_sup2, s_bound)
                 seg_loss = loss1 + loss2 + loss3
             seg_loss_record.append(seg_loss.item())
             scaler.scale(seg_loss).backward()
@@ -214,17 +215,17 @@ def segmentation_train(args, model, optimizer, dataloader_train, dataloader_val,
         tq = tqdm(total=len(dataloader_train.dataset))
         tq.set_description(f'segmentation, epoch {epoch}, seg_lr {lr:.4e}')
         loss_record = []
-        for i, (data, label) in enumerate(dataloader_train):
+        for i, (data, label, bound) in enumerate(dataloader_train):
             optimizer.zero_grad()
             
             with amp.autocast():
                 data, label = data.to(device), label.to(device)
+                bound = bound.to(device)
                 output, output_sup1, output_sup2 = model(data)
                 loss1 = loss_func(output, label)
-                loss2 = loss_func(output_sup1, label)
-                loss3 = loss_func(output_sup2, label)
+                loss2 = loss_func(output_sup1, bound)
+                loss3 = loss_func(output_sup2, bound)
                 loss = loss1 + loss2 + loss3
-            
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
