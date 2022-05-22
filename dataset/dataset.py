@@ -119,14 +119,14 @@ class FDADataset(Dataset):
         self.data_augmentation = augment_data
         self.load_labels_map()
         self.load_paths()
-        if os.path.exists(f"./labels_{self.image_size[0]}_{self.image_size[1]}.pt"):
-            self.lbl_target = torch.load(f"./labels_{self.target}_{self.image_size[0]}_{self.image_size[1]}.pt")
-        else:
-            self.lbl_target = self.read_labels()
         self.ranking = ranking
         self.beta = beta
         if ranking == "label":
-            self.target_source_index = [self.most_similar_label(lbl_source) for lbl_source in self.lbl_source_names]
+            if os.path.exists(f"./labels_{self.image_size[0]}_{self.image_size[1]}.pt"):
+                lbl_target = torch.load(f"./labels_{self.target}_{self.image_size[0]}_{self.image_size[1]}.pt")
+            else:
+                lbl_target = self.read_labels()
+            self.target_source_index = [self.most_similar_label(lbl_source, lbl_target) for lbl_source in self.lbl_source_names]
         else:
             self.target_source_index = np.arange(0, len(self.img_source_names))
 
@@ -139,10 +139,10 @@ class FDADataset(Dataset):
         format_path = lambda path: path.split('/')[1][:-1]
         with open(os.path.join(path, f'{task}.txt')) as f:
             img_entry_names = [format_path(i) for i in f.readlines()]
-            lbl_entry_names = [i.replace('leftImg8bit', 'gtFine_labelIds') for i in self.img_entry_names]
+            lbl_entry_names = [i.replace('leftImg8bit', 'gtFine_labelIds') for i in img_entry_names]
         return img_entry_names, lbl_entry_names
 
-    def load_GTA5(self, path, task):
+    def load_gta5(self, path, task):
         with open(os.path.join(path, f'{task}.txt')) as f:
             img_entry_names = [n[:-1] for n in f.readlines()]
         return img_entry_names, img_entry_names
@@ -171,11 +171,11 @@ class FDADataset(Dataset):
       torch.save(labels_concat, f"./labels_{self.target}_{self.image_size[0]}_{self.image_size[1]}.pt")
       return labels_concat
 
-    def most_similar_label(self, lbl_file_name):
+    def most_similar_label(self, lbl_file_name, lbl_target):
       src_label = read_image(os.path.join(self.path_source, 'labels', lbl_file_name))
       resize = T.Resize(self.image_size, InterpolationMode.NEAREST)
       src_label_resized = resize(src_label)
-      index_max = torch.argmax(torch.sum(self.lbl_target == src_label_resized, (1,2)))
+      index_max = torch.argmax(torch.sum(lbl_target == src_label_resized, (1,2)))
       return index_max
 
     def __getitem__(self, index):
@@ -221,7 +221,7 @@ class FDADataset(Dataset):
         img_target = Image.fromarray(img_target)
         img_target = self.to_tensor(img_target).float()
 
-        img = FDA_source_to_target(img, img_target, L = self.beta)
+        img = FDA_source_to_target(torch.unsqueeze(img, dim=0), torch.unsqueeze(img_target, dim=0), L = self.beta)[0]
 
         lbl_to_numpy = self.labels_map[np.array(lbl, dtype=np.uint8)]
         lbl = torch.from_numpy(lbl_to_numpy).long()

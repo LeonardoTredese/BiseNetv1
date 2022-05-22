@@ -149,7 +149,7 @@ def FDA_train(args, model, model_optimizer, source_loader_train, \
             model_optimizer.zero_grad()
             
             with amp.autocast():
-                s_image, s_label = s_image.to(device), s_label.to(device) 
+                s_image, s_label = s_image.to(device), s_label.to(device)
                 t_image, t_label = t_image.to(device), t_label.to(device)
                 if invert_target_source:
                     t_image = FDA_source_to_target(t_image, s_image, L = beta) 
@@ -221,6 +221,9 @@ def FDA_train_ranking(args, model, model_optimizer, source_loader_train, \
         model.train()
         for (s_image, s_label), (t_image, t_label) in zip(source_loader_train, target_loader_train):
             model_optimizer.zero_grad()
+
+            s_image, s_label = s_image.to(device), s_label.to(device)
+            t_image, t_label = t_image.to(device), t_label.to(device)
             
             # train on source domain
             with amp.autocast():

@@ -89,7 +89,7 @@ def main():
     crop_size = (args.crop_height, args.crop_width)
     validation_dataset = get_dataset(args.validation_dataset, crop_size, False, 'val', args.data)
     if args.train_type in ['ADV_DA', 'FDA']:
-        source_dataset = dataset.FDADataset(args.source_dataset, args.target_dataset, args.data, crop_size, args.augment_data, 'train', args.beta, args.ranking)
+        source_dataset = dataset.FDADataset(args.source_dataset, args.target_dataset, args.data, crop_size, args.augment_data, 'train', args.fda_beta, args.ranking)
         target_dataset = get_dataset(args.target_dataset, crop_size, args.augment_data, 'train', args.data)
     else:
         source_dataset = get_dataset(args.source_dataset, crop_size, args.augment_data, 'train',args.data)
