@@ -146,11 +146,12 @@ def FDA_train(args, model, model_optimizer, source_loader_train, \
         src_loss_record, trg_loss_record = [], []
         
         model.train()
-        for (s_image, s_label), (t_image, t_label) in zip(source_loader_train, target_loader_train):
+        for (s_image, s_label, s_bound), (t_image, t_label, _) in zip(source_loader_train, target_loader_train):
             model_optimizer.zero_grad()
             
             with amp.autocast():
-                s_image, s_label = s_image.to(device), s_label.to(device) 
+                s_image, s_label = s_image.to(device), s_label.to(device)
+                s_bound = s_bound.to(device)
                 t_image, t_label = t_image.to(device), t_label.to(device)
                 if invert_target_source:
                     t_image = FDA_source_to_target(t_image, s_image, L = beta) 
@@ -160,8 +161,8 @@ def FDA_train(args, model, model_optimizer, source_loader_train, \
             with amp.autocast():
                 seg_source, output_sup1, output_sup2 = model(s_image)
                 s_loss1 = model_loss(seg_source, s_label)
-                s_loss2 = model_loss(output_sup1, s_label)
-                s_loss3 = model_loss(output_sup2, s_label)
+                s_loss2 = model_loss(output_sup1, s_bound)
+                s_loss3 = model_loss(output_sup2, s_bound)
                 src_loss = s_loss1 + s_loss2 + s_loss3
             src_loss_record.append(src_loss.item())
 
