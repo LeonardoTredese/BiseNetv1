@@ -198,7 +198,73 @@ def FDA_train(args, model, model_optimizer, source_loader_train, \
                 torch.save(model.module.state_dict(), best_model_path) 
             writer.add_scalar('epoch/precision_val', precision, epoch)
             writer.add_scalar('epoch/miou_val', miou, epoch)
+
+def FDA_train_ranking(args, model, model_optimizer, source_loader_train, \
+              target_loader_train, target_loader_val, invert_target_source, beta, device):
+    writer = SummaryWriter(comment=f'FDA + Segmentation, {args.segmentation_optimizer}, {args.context_path}')
+    scaler = amp.GradScaler()
+    max_miou, step = 0, 0
+    is_source, is_target = .0, 1.0 
+      
+    model_loss = get_loss(args.segmentation_loss)
+    
+    for epoch in range(args.init_epoch, args.num_epochs):
+        # Imposing same learning rate for discriminator and model 
+        model_lr = poly_lr_scheduler(model_optimizer,\
+                                        args.segmentation_lr, iter=epoch, max_iter=args.num_epochs)
+        
+        tq = tqdm(total=len(target_loader_train.dataset))
+        tq.set_description(f'FDA epoch {epoch}, seg_lr {model_lr:.4e}')
+        
+        src_loss_record, trg_loss_record = [], []
+        
+        model.train()
+        for (s_image, s_label), (t_image, t_label) in zip(source_loader_train, target_loader_train):
+            model_optimizer.zero_grad()
             
+            # train on source domain
+            with amp.autocast():
+                seg_source, output_sup1, output_sup2 = model(s_image)
+                s_loss1 = model_loss(seg_source, s_label)
+                s_loss2 = model_loss(output_sup1, s_label)
+                s_loss3 = model_loss(output_sup2, s_label)
+                src_loss = s_loss1 + s_loss2 + s_loss3
+            src_loss_record.append(src_loss.item())
+
+            # train on target domain
+            with amp.autocast():
+                seg_source, output_sup1, output_sup2 = model(t_image)
+                t_loss1 = self_entropy(seg_source)
+                t_loss2 = self_entropy(output_sup1)
+                t_loss3 = self_entropy(output_sup2)
+                trg_loss = (t_loss1 + t_loss2 + t_loss3) / 3
+            trg_loss_record.append(trg_loss.item())
+            scaler.scale(src_loss + 0.005 * trg_loss).backward()
+            scaler.step(model_optimizer)
+            scaler.update()
+            
+            step += 1
+            writer.add_scalar('src_loss_step', src_loss, step)
+            # writer.add_scalar('trg_loss_step', trg_loss, step)
+            tq.update(s_image.shape[0])
+            tq.set_postfix(src_loss=f'{src_loss:.4e}')#,trg_loss=f'{trg_loss:.4e}')
+        tq.close()
+        seg_loss_train_mean = np.mean(src_loss_record)
+        wandb.log({"segmentation loss":  seg_loss_train_mean})
+        writer.add_scalar('epoch/seg_loss_train_mean', float(seg_loss_train_mean), epoch)
+        is_right_iteration = lambda i, step: (i % step) == (step - 1)
+        if is_right_iteration(epoch, args.checkpoint_step) and args.model_file_name is not None:
+            model_path = os.path.join(args.saved_models_path, args.model_file_name)
+            torch.save(model.module.state_dict(), model_path) 
+
+        if is_right_iteration(epoch, args.validation_step):
+            precision, miou = val(args, model, target_loader_val, False)
+            if miou > max_miou and args.model_file_name is not None:
+                max_miou = miou
+                best_model_path = os.path.join(args.saved_models_path, 'best_'+args.model_file_name)
+                torch.save(model.module.state_dict(), best_model_path) 
+            writer.add_scalar('epoch/precision_val', precision, epoch)
+            writer.add_scalar('epoch/miou_val', miou, epoch)          
 
 def segmentation_train(args, model, optimizer, dataloader_train, dataloader_val, device):
     writer = SummaryWriter(comment=f'Segmentation, {args.segmentation_optimizer}, {args.context_path}')

@@ -9,7 +9,7 @@ from model.discriminator import DepthwiseDiscriminator, FCDiscriminator
 from dataset import dataset
 import utils
 import wandb
-from train import segmentation_train, adversarial_train, FDA_train
+from train import segmentation_train, adversarial_train, FDA_train, FDA_train_ranking
 from validate import val
 
 def get_dataset(dataset_name, crop_size, augment_data , task, base_path):
@@ -67,6 +67,7 @@ def main():
     parser.add_argument('--augment_data', action='store_true', help='Perform data augmentation, disable with --no-augment_data')
     parser.add_argument('--no-augment_data', dest='augment_data', action='store_false')
     parser.set_defaults(augment_data=False)
+    parser.add_argument('--ranking', type=str, default=None, help='Ranking for choosing target image in FDA')
 
     args = parser.parse_args()
 
@@ -86,10 +87,12 @@ def main():
     
     # Create datasets instance
     crop_size = (args.crop_height, args.crop_width)
-    source_dataset = get_dataset(args.source_dataset, crop_size, args.augment_data, 'train',args.data)
     validation_dataset = get_dataset(args.validation_dataset, crop_size, False, 'val', args.data)
     if args.train_type in ['ADV_DA', 'FDA']:
+        source_dataset = dataset.FDADataset(args.source_dataset, args.target_dataset, args.data, crop_size, args.augment_data, 'train', args.beta, args.ranking)
         target_dataset = get_dataset(args.target_dataset, crop_size, args.augment_data, 'train', args.data)
+    else:
+        source_dataset = get_dataset(args.source_dataset, crop_size, args.augment_data, 'train',args.data)
 
     # Define your dataloaders:
     source_loader = DataLoader(
@@ -144,7 +147,8 @@ def main():
         adversarial_train(args, model, discriminator, model_optimizer, discriminator_optimizer, \
                           source_loader, target_loader, validation_loader, device)
     elif args.train_type == 'FDA':
-        FDA_train(args, model, model_optimizer, source_loader, target_loader, validation_loader, args.fda_inverted, args.fda_beta, device)
+        # FDA_train(args, model, model_optimizer, source_loader, target_loader, validation_loader, args.fda_inverted, args.fda_beta, device)
+        FDA_train_ranking(args, model, model_optimizer, source_loader, target_loader, validation_loader, args.fda_inverted, args.fda_beta, device)
     elif args.train_type == 'SEG':
         segmentation_train(args, model, model_optimizer, source_loader, validation_loader, device)
     
