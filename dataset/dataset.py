@@ -121,7 +121,7 @@ class FDADataset(Dataset):
         self.load_paths()
         self.ranking = ranking
         self.beta = beta
-        if ranking == "label":
+        if ranking == "labels":
             if os.path.exists(f"./labels_{self.image_size[0]}_{self.image_size[1]}.pt"):
                 lbl_target = torch.load(f"./labels_{self.target}_{self.image_size[0]}_{self.image_size[1]}.pt")
             else:
