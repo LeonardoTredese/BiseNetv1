@@ -148,7 +148,7 @@ class FDADataset(Dataset):
         return img_entry_names, img_entry_names
 
     def load_paths(self):
-        if self.source == "cityscapes":
+        if self.source == "Cityscapes":
             self.img_source_names, self.lbl_source_names = self.load_cityscapes(self.path_source, self.task)
             self.img_target_names, self.lbl_target_names = self.load_gta5(self.path_target, "train")
         else:

@@ -32,7 +32,7 @@ def main():
     # basic parameters
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--train_type', type=str, help='Available training types: "SEG" normal segmentation, "ADV_DA" adversarial domain adaptation, "FDA" fourier domain adaptation')
+    parser.add_argument('--train_type', type=str, help='Available training types: "SEG" normal segmentation, "ADV_DA" adversarial domain adaptation, "FDA" fourier domain adaptation, "FDA_VAL" fourier domain adaptation during validation')
     parser.add_argument('--fda_inverted', action='store_true', help='Perform target to source fourier doman adaptation')
     parser.set_defaults(fda_inverted=False)
     parser.add_argument('--fda_beta', type=float, default=3e-3, help='Beta parameter that regulates how many frequencies to swap between source and target')
@@ -87,12 +87,15 @@ def main():
     
     # Create datasets instance
     crop_size = (args.crop_height, args.crop_width)
-    validation_dataset = get_dataset(args.validation_dataset, crop_size, False, 'val', args.data)
     if args.train_type in ['ADV_DA', 'FDA']:
         source_dataset = dataset.FDADataset(args.source_dataset, args.target_dataset, args.data, crop_size, args.augment_data, 'train', args.fda_beta, args.ranking)
         target_dataset = get_dataset(args.target_dataset, crop_size, args.augment_data, 'train', args.data)
     else:
         source_dataset = get_dataset(args.source_dataset, crop_size, args.augment_data, 'train',args.data)
+    if args.train_type == "FDA_VAL":
+        validation_dataset = dataset.FDADataset(args.validation_dataset, args.source_dataset, args.data, crop_size, args.augment_data, 'val', args.fda_beta, args.ranking)
+    else:
+        validation_dataset = get_dataset(args.validation_dataset, crop_size, False, 'val', args.data)
 
     # Define your dataloaders:
     source_loader = DataLoader(
@@ -149,7 +152,7 @@ def main():
     elif args.train_type == 'FDA':
         # FDA_train(args, model, model_optimizer, source_loader, target_loader, validation_loader, args.fda_inverted, args.fda_beta, device)
         FDA_train_ranking(args, model, model_optimizer, source_loader, target_loader, validation_loader, args.fda_inverted, args.fda_beta, device)
-    elif args.train_type == 'SEG':
+    else:
         segmentation_train(args, model, model_optimizer, source_loader, validation_loader, device)
     
     # final test
